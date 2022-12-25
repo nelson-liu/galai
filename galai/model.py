@@ -147,7 +147,11 @@ class Model(object):
         self.tokenizer.enable_padding(direction="left", pad_id=1, pad_type_id=0, pad_token="[PAD]")
         self.tokenizer.enable_truncation(max_length=2020, direction="left")
 
-    def _tokenize(self, input_text: List[str], new_doc: bool) -> torch.LongTensor:
+    def _tokenize(
+            self,
+            input_text: List[str],
+            new_doc: bool,
+            max_length: int = None) -> torch.LongTensor:
         """
         Apply custom preprocessing to input texts and tokenize them.
 
@@ -176,7 +180,9 @@ class Model(object):
             texts = [pad_token + t for t in texts]
 
         list_encoded = self.tokenizer.encode_batch(texts)
-        context_tokens = [encoded.ids for encoded in list_encoded]
+        context_tokens = [
+            encoded.ids[-max_length:] if max_length else encoded.ids
+            for encoded in list_encoded]
         input_v = torch.LongTensor(context_tokens).to(self.model.device)
 
         if new_doc:
@@ -196,6 +202,7 @@ class Model(object):
         penalty_alpha=None,
         num_beams=1,
         num_return_sequences=1,
+        max_prompt_length=None,
     ) -> Union[str, List[str], List[List[str]]]:
         """
         Generates text using the model
@@ -248,7 +255,7 @@ class Model(object):
             strings, in which each inner list contains the generations for a given input prompt.
         """
         texts = [input_text] if isinstance(input_text, str) else input_text
-        input_v = self._tokenize(texts, new_doc)
+        input_v = self._tokenize(texts, new_doc, max_length=max_prompt_length)
         options = {}
         if penalty_alpha is not None:
             options["penalty_alpha"] = penalty_alpha
@@ -299,6 +306,7 @@ class Model(object):
         top_p=None,
         suggestions=1,
         diversity_penalty=0.0,
+        max_prompt_length=None,
     ) -> Union[str, List[str], List[List[str]]]:
         """
         Generates reference.
@@ -358,7 +366,7 @@ class Model(object):
                     # avoid spaces after [START_REF] token for better results
                     fixed_texts.append(text.rstrip())
 
-        input_v = self._tokenize(fixed_texts, new_doc)
+        input_v = self._tokenize(fixed_texts, new_doc, max_length=max_prompt_length)
 
         prompt_length = input_v.shape[1]
         finished_reference_criteria = FinishedReferenceCriteria(
